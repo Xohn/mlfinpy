@@ -124,10 +124,14 @@ class PurgedKFold(KFold):
             )
             train_times = ml_get_train_times(self.samples_info_sets, test_times)
 
-            train_indices = list()
-
-            for train_ix in train_times.index:
-                train_indices.append(self.samples_info_sets.index.get_loc(train_ix))
+            # `.get_loc()` per label breaks (raises or returns a slice/array
+            # instead of a scalar) when `samples_info_sets.index` has
+            # duplicates -- e.g. pooling multiple assets' events, where two
+            # different assets can share the same event date. `ml_get_train_times`
+            # drops (or keeps) an index *label* for every row sharing it, so
+            # membership testing directly against the surviving labels is both
+            # correct and duplicate-safe.
+            train_indices = indices[self.samples_info_sets.index.isin(train_times.index)]
 
             # Sanity check (no overlap)
             if len(np.intersect1d(train_indices, test_indices)) > 0:

@@ -264,6 +264,35 @@ class TestCrossValidation(unittest.TestCase):
             self.log("-" * 100)
             self.assertTrue(train_times_ret.equals(train_times_gtt), "dataset don't match")
 
+    def test_purgedkfold_05_duplicate_index(self):
+        """
+        Test PurgedKFold with a non-unique `samples_info_sets` index, e.g. pooling
+        events from multiple assets that can share the same event date. `.split()`
+        used to convert surviving train dates back to positions via a per-label
+        `.index.get_loc()` loop, which raises (or returns a slice/array instead of
+        a scalar) whenever a date is shared by more than one row.
+        """
+        dates = pd.date_range(start="2019-01-01 00:00:00", periods=20, freq="min")
+        # Two "assets" sharing the exact same dates -> a duplicated index.
+        info_sets = pd.concat(
+            [
+                pd.Series(index=dates, data=dates + pd.Timedelta(minutes=2)),
+                pd.Series(index=dates, data=dates + pd.Timedelta(minutes=2)),
+            ]
+        ).sort_index()
+        self.assertTrue(info_sets.index.duplicated().any())
+
+        dataset = pd.DataFrame(index=range(info_sets.shape[0]), data={"feat": np.arange(info_sets.shape[0])})
+
+        pkf = PurgedKFold(n_splits=3, samples_info_sets=info_sets, pct_embargo=0.0)
+        for train_indices, test_indices in pkf.split(dataset):
+            self.assertEqual(0, len(np.intersect1d(train_indices, test_indices)))
+            self.assertGreater(len(train_indices), 0)
+            self.assertGreater(len(test_indices), 0)
+            # Purged (overlapping) rows are excluded from both train and test, so
+            # the two need not sum to the total -- just bounded by it.
+            self.assertLessEqual(len(train_indices) + len(test_indices), info_sets.shape[0])
+
     def _test_ml_cross_val_score__data(self):
         """
         Get data structures for next few tests.
