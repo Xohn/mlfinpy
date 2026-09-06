@@ -38,7 +38,7 @@ def _get_values_diff(test_type: str, series: pd.Series, index: pd.Index, ind: pd
     return values_diff
 
 
-def _get_s_n_for_t(series: pd.Series, test_type: str, molecule: list) -> pd.Series:
+def _get_s_n_for_t(series: pd.Series, test_type: str, molecule: list, window: int = None) -> pd.Series:
     """
     Get maximum S_n_t value for each value from molecule for Chu-Stinchcombe-White test
 
@@ -50,6 +50,12 @@ def _get_s_n_for_t(series: pd.Series, test_type: str, molecule: list) -> pd.Seri
         Two-sided or one-sided test.
     molecule : list
         Indices to get test statistics for.
+    window : int, optional
+        If given, restrict both the sigma_t estimate and the search for the reference
+        point n to the trailing `window` observations ending at t, instead of the full
+        series since inception (the default below, per AFML Snippet 17.3's expanding
+        formulation). Useful for long histories, where an expanding-only search compares
+        against reference points from years ago and becomes almost always significant.
 
     Returns
     -------
@@ -61,6 +67,8 @@ def _get_s_n_for_t(series: pd.Series, test_type: str, molecule: list) -> pd.Seri
     for index in molecule:
 
         series_t = series.loc[:index]
+        if window is not None:
+            series_t = series_t.iloc[-(window + 1):]
         squared_diff = series_t.diff().dropna() ** 2
         integer_index = series_t.index.get_loc(index)
         sigma_sq_t = 1 / (integer_index - 1) * sum(squared_diff)
@@ -86,7 +94,7 @@ def _get_s_n_for_t(series: pd.Series, test_type: str, molecule: list) -> pd.Seri
 
 
 def get_chu_stinchcombe_white_statistics(
-    series: pd.Series, test_type: str = "one_sided", num_threads: int = 8, verbose: bool = True
+    series: pd.Series, test_type: str = "one_sided", num_threads: int = 8, verbose: bool = True, window: int = None
 ) -> pd.Series:
     """
     Multithread Chu-Stinchcombe-White test implementation, p.251
@@ -101,6 +109,10 @@ def get_chu_stinchcombe_white_statistics(
         Number of cores.
     verbose : bool
         Flag to report progress on asynch jobs.
+    window : int, optional
+        If given, bound both the sigma_t estimate and the reference-point search to the
+        trailing `window` observations (see `_get_s_n_for_t`), instead of expanding from
+        the start of `series` (default, matches Snippet 17.3 exactly).
 
     Returns
     -------
@@ -114,6 +126,7 @@ def get_chu_stinchcombe_white_statistics(
         pd_obj=("molecule", molecule),
         series=series,
         test_type=test_type,
+        window=window,
         num_threads=num_threads,
         verbose=verbose,
     )
