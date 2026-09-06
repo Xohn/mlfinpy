@@ -77,7 +77,9 @@ def triple_barriers(close: pd.Series, events: pd.Series, pt_sl: np.array, molecu
 
 
 # Snippet 3.4 page 49, Adding a Vertical Barrier
-def add_vertical_barrier(t_events, close, num_days=0, num_hours=0, num_minutes=0, num_seconds=0):
+def add_vertical_barrier(
+    t_events, close, num_days=0, num_hours=0, num_minutes=0, num_seconds=0, num_bars=None
+):
     """
     Adding a Vertical Barrier
 
@@ -100,6 +102,12 @@ def add_vertical_barrier(t_events, close, num_days=0, num_hours=0, num_minutes=0
         Number of minutes to add for vertical barrier.
     num_seconds : int, optional
         Number of seconds to add for vertical barrier.
+    num_bars : int, optional
+        If given, ignore num_days/num_hours/num_minutes/num_seconds and instead advance
+        `num_bars` bar POSITIONS ahead of each event (i.e. "N bars later" rather than a
+        calendar-time offset). Useful for daily-bar data where a calendar-time offset gets
+        shortened by weekends/holidays. Default (None) preserves the original Snippet 3.4
+        calendar-time behaviour below.
 
     Returns
     -------
@@ -110,6 +118,11 @@ def add_vertical_barrier(t_events, close, num_days=0, num_hours=0, num_minutes=0
     ------
     Advances in Financial Machine Learning, Snippet 3.4, page 49.
     """
+    if num_bars is not None:
+        positions = close.index.get_indexer(t_events)
+        t1_positions = positions + num_bars
+        t1_positions = np.where(t1_positions < len(close.index), t1_positions, len(close.index) - 1)
+        return pd.Series(close.index[t1_positions], index=t_events, name="t1")
 
     # Create a timedelta object based on the input parameters
     timedelta = pd.Timedelta(

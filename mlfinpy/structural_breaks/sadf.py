@@ -25,7 +25,7 @@ def _get_sadf_at_t(X: pd.DataFrame, y: pd.DataFrame, min_length: int, model: str
     min_length : int
         Minimum number of samples needed for estimation
     model : str
-        Either 'linear', 'quadratic', 'sm_poly_1', 'sm_poly_2', 'sm_exp', 'sm_power'
+        Either 'native', 'linear', 'quadratic', 'sm_poly_1', 'sm_poly_2', 'sm_exp', 'sm_power'
     phi : float
         Coefficient to penalize large sample lengths when computing SMT, in [0, 1]
 
@@ -65,7 +65,7 @@ def _get_y_x(
     series : pd.Series
         Series to prepare for test statistics generation (for example log prices)
     model : str
-        Either 'linear', 'quadratic', 'sm_poly_1', 'sm_poly_2', 'sm_exp', 'sm_power'
+        Either 'native', 'linear', 'quadratic', 'sm_poly_1', 'sm_poly_2', 'sm_exp', 'sm_power'
     lags : int or list
         Either number of lags to use or array of specified lags
     add_const : bool
@@ -91,7 +91,14 @@ def _get_y_x(
     if add_const is True:
         x["const"] = 1
 
-    if model == "linear":
+    if model == "native":
+        # Plain Phillips-Wu-Yu (2011) / AFML Ch17 base spec: constant + y_lagged + lagged
+        # diffs only, no deterministic trend term (unlike "linear"/"quadratic" below).
+        # This is the specification the canonical SADF bubble test actually uses.
+        if "const" not in x.columns:
+            x["const"] = 1
+        beta_column = "y_lagged"
+    elif model == "linear":
         x["trend"] = np.arange(x.shape[0])  # Add t to the model (0, 1, 2, 3, 4, 5, .... t)
         beta_column = "y_lagged"  # Column which is used to estimate test beta statistics
     elif model == "quadratic":
@@ -217,7 +224,7 @@ def _sadf_outer_loop(
     min_length : int
         Minimum number of observations.
     model : str
-        Either 'linear', 'quadratic', 'sm_poly_1', 'sm_poly_2', 'sm_exp', 'sm_power'.
+        Either 'native', 'linear', 'quadratic', 'sm_poly_1', 'sm_poly_2', 'sm_exp', 'sm_power'.
     phi : float
         Coefficient to penalize large sample lengths when computing SMT, in [0, 1].
     molecule : list
@@ -265,7 +272,7 @@ def get_sadf(
     series : pd.Series
         Series for which SADF statistics are generated.
     model : str
-        Either 'linear', 'quadratic', 'sm_poly_1', 'sm_poly_2', 'sm_exp', 'sm_power'.
+        Either 'native', 'linear', 'quadratic', 'sm_poly_1', 'sm_poly_2', 'sm_exp', 'sm_power'.
     lags : int or list
         Either number of lags to use or array of specified lags.
     min_length : int
