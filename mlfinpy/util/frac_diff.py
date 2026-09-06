@@ -232,7 +232,7 @@ class FractionalDifferentiation:
             temp_df_ = pd.Series(index=series.index, dtype="float64")
             for iloc1 in range(width, series_f.shape[0]):
                 loc0 = series_f.index[iloc1 - width]
-                loc1 = series.index[iloc1]
+                loc1 = series_f.index[iloc1]
 
                 # At this point all entries are non-NAs, hence no need for the following check
                 # if np.isfinite(series.loc[loc1, name]):
