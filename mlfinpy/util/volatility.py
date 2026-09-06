@@ -8,7 +8,7 @@ import pandas as pd
 # pylint: disable=redefined-builtin
 
 
-def get_daily_vol(close: pd.Series, lookback: int = 100) -> pd.Series:
+def get_daily_vol(close: pd.Series, lookback: int = 100, adjust: bool = True, use_bars: bool = False) -> pd.Series:
     """
     Daily Volatility Estimates
     Computes the daily volatility at intraday estimation points.
@@ -26,6 +26,20 @@ def get_daily_vol(close: pd.Series, lookback: int = 100) -> pd.Series:
         This value is used to compute alpha decay.
         value in the ewm() method:
         `alpha` = 2 / (`span` + 1) for `span` => 1.
+    adjust : bool, optional
+        Passed through to the EWM `.std()` call. Default True is pandas' own
+        `.ewm()` default (and what Snippet 3.1 uses unmodified). `adjust=False`
+        uses the recursive O(1)-update formula instead.
+    use_bars : bool, optional
+        If True, use the simple bar-to-bar return (`close.pct_change()`) instead
+        of Snippet 3.1's search for the closest bar >= 1 calendar day earlier.
+        On daily-bar data, that search steps one bar further back than the
+        immediately preceding bar whenever "1 day ago" lands exactly on an
+        existing timestamp (e.g. Tuesday -> Monday, an exact match, so it then
+        steps back one more to the prior Friday) -- i.e. it silently computes
+        a ~2-trading-day return instead of a 1-bar return on plain daily data.
+        `use_bars=True` avoids that, matching a project's own `close.pct_change()`
+        exactly. Default False preserves Snippet 3.1 unmodified.
 
     Returns
     -------
@@ -38,13 +52,16 @@ def get_daily_vol(close: pd.Series, lookback: int = 100) -> pd.Series:
     This function is used to compute dynamic thresholds for profit taking and stop loss limits.
     See the pandas documentation for details on the pandas.Series.ewm function.
     """
-    # daily vol re-indexed to close
-    df0 = close.index.searchsorted(close.index - pd.Timedelta(days=1))
-    df0 = df0[df0 > 0]
-    df0 = pd.Series(close.index[df0 - 1], index=close.index[close.shape[0] - df0.shape[0] :])
+    if use_bars:
+        df0 = close.pct_change()
+    else:
+        # daily vol re-indexed to close
+        df0 = close.index.searchsorted(close.index - pd.Timedelta(days=1))
+        df0 = df0[df0 > 0]
+        df0 = pd.Series(close.index[df0 - 1], index=close.index[close.shape[0] - df0.shape[0] :])
 
-    df0 = close.loc[df0.index] / close.loc[df0.array].array - 1  # daily returns
-    df0 = df0.ewm(span=lookback).std()
+        df0 = close.loc[df0.index] / close.loc[df0.array].array - 1  # daily returns
+    df0 = df0.ewm(span=lookback, adjust=adjust).std()
     return df0
 
 
