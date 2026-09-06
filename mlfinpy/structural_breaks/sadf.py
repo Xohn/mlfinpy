@@ -41,6 +41,11 @@ def _get_sadf_at_t(X: pd.DataFrame, y: pd.DataFrame, min_length: int, model: str
     start_points, bsadf = range(0, y.shape[0] - min_length + 1), -np.inf
     for start in start_points:
         y_, X_ = y[start:], X[start:]
+        if y_.shape[0] < 20:
+            # A regression fit on fewer than 20 observations is too noisy to
+            # trust; excluding it from the sup-search avoids the ADF stat
+            # being driven by a single unreliable small-sample window.
+            continue
         b_mean_, b_std_ = get_betas(X_, y_)
         if not np.isnan(b_mean_[0]):
             b_mean_, b_std_ = b_mean_[0, 0], b_std_[0, 0] ** 0.5
@@ -244,6 +249,107 @@ def _sadf_outer_loop(
     return sadf_series
 
 
+def _sadf_native_fast(series: pd.Series, lags: int, min_length: int) -> pd.Series:
+    """
+    Vectorised model="native" SADF: plain Phillips-Wu-Yu (2011) / AFML Ch17 base spec
+    (constant + y_lagged + lagged diffs, no deterministic trend).
+
+    Every ADF regression for window [t0, t] uses rows i in [t0+lags, t-1], and each
+    row's own values (y[i], and the lag-differences around it) don't depend on t0 at
+    all -- only which contiguous slice of rows a window includes does. So instead of
+    rebuilding and re-inverting X'X from scratch for every (t0, t) pair (what
+    `_sadf_outer_loop`/`_get_sadf_at_t` do for the other models -- correct, but
+    O(n^3) and ~25x slower on a realistic daily-bar series), each row is precomputed
+    once and its running (cumulative) sum taken, so any window's X'X/X'y is a
+    difference of two cumulative sums in O(1). That turns the unavoidable O(n^2)
+    sup-search into O(n^2) total work, with numpy's batched linalg solving every t0
+    for a given t in one vectorised call -- exact same numbers as a from-scratch
+    refit, just without redoing shared work.
+
+    Parameters
+    ----------
+    series : pd.Series
+        Series (e.g. log prices) to compute SADF over.
+    lags : int
+        Number of lagged difference terms in the ADF regression.
+    min_length : int
+        Minimum number of post-diff-and-lag observations required for a candidate
+        regression window (same units as `get_sadf`'s `min_length` for the other
+        models).
+
+    Returns
+    -------
+    pd.Series
+        SADF statistics aligned to `series.index`.
+    """
+    min_sl = min_length + lags
+    n = len(series)
+    L = lags
+    p = L + 2
+    out = np.full(n, np.nan)
+    y = series.astype(float).ffill().to_numpy()
+
+    if n - 1 - L < 1:  # not even one valid row
+        return pd.Series(out, index=series.index, name="sadf")
+
+    # Row i (i = L .. n-2) of the ADF regression, expressed once -- identical
+    # for every window that includes it (see docstring).
+    dy = np.diff(y)  # dy[k] = y[k+1] - y[k]
+    i_idx = np.arange(L, n - 1)
+    m = len(i_idx)
+    target = dy[i_idx]
+    lag_cols = np.column_stack([dy[i_idx - j] for j in range(1, L + 1)]) if L > 0 else np.empty((m, 0))
+    R = np.column_stack([y[i_idx], np.ones(m), lag_cols])  # (m, p)
+
+    # Prefix sums over "row position" pos = i - L, so that rows for window
+    # (t0, t) -- i in [t0+L, t-1], i.e. pos in [t0, t-1-L] -- are
+    # S2[t-L] - S2[t0] etc. (k = t - L is the exclusive upper prefix index).
+    outer = np.einsum("ma,mb->mab", R, R)
+    S2 = np.concatenate([np.zeros((1, p, p)), np.cumsum(outer, axis=0)])
+    S3 = np.concatenate([np.zeros((1, p)), np.cumsum(R * target[:, None], axis=0)])
+    S4 = np.concatenate([[0.0], np.cumsum(target**2)])
+
+    for t in range(min_sl, n):
+        k = t - L
+        if k < 0 or k > m:
+            continue
+        t0_hi = min(t - min_sl, k - 20)  # need n_obs = k - t0 >= 20 for a reliable fit
+        if t0_hi < 0:
+            continue
+        t0 = np.arange(0, t0_hi + 1)
+
+        XtX = S2[k] - S2[t0]          # (q, p, p)
+        XtY = S3[k] - S3[t0]          # (q, p)
+        n_obs = k - t0                 # (q,)
+        dof = n_obs - p
+        valid = dof > 0
+
+        det = np.linalg.det(XtX)
+        valid &= np.abs(det) > 1e-12  # matches the singular-matrix skip in the naive form
+        if not valid.any():
+            continue
+
+        beta = np.zeros_like(XtY)
+        # b needs an explicit trailing dim (p, 1) so numpy batches solve()
+        # over the leading q axis instead of treating (q, p) as one system.
+        beta[valid] = np.linalg.solve(XtX[valid], XtY[valid][..., None]).squeeze(-1)
+        rss = (S4[k] - S4[t0]) - np.einsum("qp,qp->q", beta, XtY)
+        sigma2 = np.where(valid & (dof > 0), rss / np.maximum(dof, 1), np.nan)
+
+        xtx_inv00 = np.full(len(t0), np.nan)
+        xtx_inv00[valid] = np.linalg.inv(XtX[valid])[:, 0, 0]
+        var_beta_lag = sigma2 * xtx_inv00
+        valid &= np.isfinite(var_beta_lag) & (var_beta_lag > 0)
+        if not valid.any():
+            continue
+
+        stat = beta[:, 0][valid] / np.sqrt(var_beta_lag[valid])
+        best = stat.max()
+        out[t] = best if np.isfinite(best) else np.nan
+
+    return pd.Series(out, index=series.index, name="sadf")
+
+
 def get_sadf(
     series: pd.Series,
     model: str,
@@ -295,6 +401,11 @@ def get_sadf(
     -----
         Advances in Financial Machine Learning, p. 258-259.
     """
+    if model == "native":
+        if not isinstance(lags, int):
+            raise ValueError("model='native' only supports a single int for `lags` (contiguous 1..lags).")
+        return _sadf_native_fast(series, lags=lags, min_length=min_length)
+
     X, y = _get_y_x(series, model, lags, add_const)
     molecule = y.index[min_length : y.shape[0]]
 

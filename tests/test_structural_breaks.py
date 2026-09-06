@@ -76,19 +76,62 @@ class TesStructuralBreaks(unittest.TestCase):
         self.assertAlmostEqual(one_sided_test.critical_value.mean(), 2.7809, delta=1e-3)
         self.assertAlmostEqual(one_sided_test.critical_value.iloc[20], 2.4466, delta=1e-3)
 
-        self.assertAlmostEqual(one_sided_test.stat.max(), 3729.001, delta=1e-3)
-        self.assertAlmostEqual(one_sided_test.stat.mean(), 836.509, delta=1e-3)
-        self.assertAlmostEqual(one_sided_test.stat.iloc[20], 380.137, delta=1e-3)
+        # Values below reflect the sigma_t fix in commit da76295: S_n,t's
+        # denominator must use the std dev (sqrt(sigma_sq_t)), not the raw
+        # variance -- the old expected values here were computed from the
+        # unfixed (~1/sigma_t times inflated) statistic.
+        self.assertAlmostEqual(one_sided_test.stat.max(), 5.3797, delta=1e-3)
+        self.assertAlmostEqual(one_sided_test.stat.mean(), 1.2582, delta=1e-3)
+        self.assertAlmostEqual(one_sided_test.stat.iloc[20], 0.6098, delta=1e-3)
 
         self.assertAlmostEqual(two_sided_test.critical_value.max(), 3.235, delta=1e-3)
         self.assertAlmostEqual(two_sided_test.critical_value.mean(), 2.769, delta=1e-3)
         self.assertAlmostEqual(two_sided_test.critical_value.iloc[20], 2.715, delta=1e-3)
 
-        self.assertAlmostEqual(two_sided_test.stat.max(), 5518.519, delta=1e-3)
-        self.assertAlmostEqual(two_sided_test.stat.mean(), 1264.582, delta=1e-3)
-        self.assertAlmostEqual(two_sided_test.stat.iloc[20], 921.2979, delta=1e-3)
+        self.assertAlmostEqual(two_sided_test.stat.max(), 8.5793, delta=1e-3)
+        self.assertAlmostEqual(two_sided_test.stat.mean(), 1.8875, delta=1e-3)
+        self.assertAlmostEqual(two_sided_test.stat.iloc[20], 1.4779, delta=1e-3)
 
         self.assertRaises(ValueError, get_chu_stinchcombe_white_statistics, log_prices, "rubbish text")
+
+    def test_chu_stinchcombe_white_test_windowed(self):
+        """
+        Test get_chu_stinchcombe_white_statistics function's fork-only `window=` argument
+        (bounded reference-point search, instead of the default expanding-from-inception
+        search): shape is unaffected, values differ from the unwindowed test above.
+        """
+        log_prices = np.log(self.data.close)
+        windowed_test = get_chu_stinchcombe_white_statistics(
+            log_prices, test_type="one_sided", window=100, verbose=True
+        )
+
+        self.assertEqual(log_prices.shape[0] - 2, windowed_test.shape[0])
+        self.assertAlmostEqual(windowed_test.stat.max(), 4.886, delta=1e-3)
+        self.assertAlmostEqual(windowed_test.stat.mean(), 1.0703, delta=1e-3)
+        self.assertAlmostEqual(windowed_test.stat.iloc[20], 0.6098, delta=1e-3)
+
+    def test_sadf_native_model(self):
+        """
+        Test get_sadf function's fork-only model="native" (the plain Phillips-Wu-Yu (2011)
+        / AFML Ch17 base SADF spec: constant + y_lagged + lagged diffs, no deterministic
+        trend term -- unlike "linear"/"quadratic"/"sm_*" which all add one). Verified
+        against an independent from-scratch vectorised implementation to match exactly
+        (rtol=atol=1e-8) across several (min_length, lags) combinations.
+
+        Unlike the other models, model="native" returns a full-length series aligned to
+        `series.index` (NaN before the first valid point), not one truncated to the
+        first-valid-to-last-valid range -- see `_sadf_native_fast`'s docstring.
+        """
+        log_prices = np.log(self.data.close)
+        native_sadf = get_sadf(log_prices, model="native", min_length=20, lags=5, verbose=True)
+
+        self.assertEqual(log_prices.shape[0], native_sadf.shape[0])
+        self.assertEqual(306, native_sadf.notna().sum())
+        self.assertAlmostEqual(native_sadf.dropna().iloc[0], -2.5338, delta=1e-3)
+        self.assertAlmostEqual(native_sadf.dropna().iloc[100], -1.4787, delta=1e-3)
+        self.assertAlmostEqual(native_sadf.dropna().mean(), -1.7923, delta=1e-3)
+
+        self.assertRaises(ValueError, get_sadf, series=log_prices, model="native", min_length=20, lags=[1, 2])
 
     def test_sadf_test(self):
         """
