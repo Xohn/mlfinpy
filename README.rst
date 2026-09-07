@@ -52,6 +52,14 @@ techniques with ease.
 About this fork
 ================
 
+.. important::
+    **Built with heavy AI assistance.** The bug fixes, additions, and this
+    documentation on this fork were developed with substantial help from AI
+    coding tools, which were used to review the reasoning behind each change
+    and to implement it. Every change was still verified against independent
+    reference implementations and this fork's test suite before being
+    committed — but flagging the AI involvement here for transparency.
+
 This is a personal fork (`Xohn/mlfinpy <https://github.com/Xohn/mlfinpy>`_) of
 `baobach/mlfinpy <https://github.com/baobach/mlfinpy>`_, maintained to support
 a downstream AFML-based equity research project. All credit for the
@@ -110,48 +118,35 @@ existing behaviour, so this fork is a drop-in replacement.
 
 Installation
 ============
-Installation can then be done via pip::
 
-    pip install mlfinpy
-
-
-For the sake of best practice, it is good to do this with a dependency manager. I suggest you
-set yourself up with `poetry <https://github.com/sdispater/poetry>`_, then within a new poetry project
-run:
+.. important::
+    ``pip install mlfinpy`` and ``poetry add mlfinpy`` install the
+    **upstream** PyPI package (`baobach/mlfinpy
+    <https://github.com/baobach/mlfinpy>`_), not this fork — none of this
+    fork's bug fixes or additions (see "About this fork" above) are
+    published on PyPI. To get this fork, install directly from GitHub
+    instead:
 
 .. code-block:: text
 
-    poetry add mlfinpy
-
-.. note::
-    If any of these methods don't work, please `raise an issue
-    <https://github.com/baobach/mlfinpy/issues>`_ with the ``packaging`` label on GitHub.
-
-
+    pip install -e git+https://github.com/Xohn/mlfinpy.git
 
 For developers
 --------------
 
-If you are planning on using Mlfinpy as a starting template for significant
+If you are planning on using this fork as a starting template for significant
 modifications, it probably makes sense to clone the repository and to just use the
 source code:
 
 .. code-block:: text
 
-    git clone https://github.com/baobach/mlfinpy
-
-    # or, for this fork (bug fixes and additions, see "About this fork" above):
     git clone https://github.com/Xohn/mlfinpy
 
-Alternatively, if you still want the convenience of a global ``from mlfinpy import x``,
-you should try:
-
-.. code-block:: text
-
-    pip install -e git+https://github.com/baobach/mlfinpy.git
-
-    # or, for this fork:
-    pip install -e git+https://github.com/Xohn/mlfinpy.git
+.. note::
+    Looking for the original, unmodified package instead? See `baobach/mlfinpy
+    <https://github.com/baobach/mlfinpy>`_, installable via ``pip install
+    mlfinpy`` / ``poetry add mlfinpy``. If any of *those* methods don't work,
+    raise an issue there with the ``packaging`` label.
 
 Work with HFT Data
 ==================
