@@ -15,3 +15,11 @@ and inaccessible to the public. While there were forks of the project, the code 
 and incompatible with modern libraries, such as Pandas 2.0 and the latest versions of Numpy.
 This motivated me to develop Mlfinpy, a package with a well-documented and intuitive API designed
 to be up-to-date and available to the broader community.
+
+.. note::
+    This page describes the original mlfinpy project by Robert Bach
+    (`baobach/mlfinpy <https://github.com/baobach/mlfinpy>`_). You may be
+    reading it from a fork (`Xohn/mlfinpy <https://github.com/Xohn/mlfinpy>`_)
+    maintained separately to support a downstream trading research project —
+    see "About this fork" in the README/index and :doc:`Roadmap` for what's
+    different there. All credit for mlfinpy itself belongs to Robert.

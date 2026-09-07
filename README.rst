@@ -49,6 +49,65 @@ Leverage best practice in packaging Python library, morden documentation style a
 Finance students to reproduce the complex data transformation, labeling, sampling and feature engineering
 techniques with ease.
 
+About this fork
+================
+
+This is a personal fork (`Xohn/mlfinpy <https://github.com/Xohn/mlfinpy>`_) of
+`baobach/mlfinpy <https://github.com/baobach/mlfinpy>`_, maintained to support
+a downstream AFML-based equity research project. All credit for the
+original package design and implementation goes to Robert Bach (see `About
+<https://mlfinpy.readthedocs.io/en/latest/About.html>`_) — this fork only adds
+targeted bug fixes and a few backward-compatible extensions found while
+integrating mlfinpy into a real, multi-asset daily-bar pipeline. If you don't
+need these specific fixes, use the upstream project instead. Full changelog in
+`docs/Roadmap.rst <docs/Roadmap.rst>`_.
+
+Bug fixes
+---------
+
+- ``util.frac_diff.frac_diff_ffd``: fixed an index-misalignment bug that crashed
+  (or silently misaligned dates) on any series with a leading NaN.
+- ``structural_breaks.cusum.get_chu_stinchcombe_white_statistics``: fixed the
+  :math:`S_{n,t}` denominator, which used the variance instead of its square
+  root (the standard deviation) — this inflated every statistic by roughly
+  :math:`1/\sigma_t` (commonly 80-140x for daily-return volatility), making the
+  test almost always flag a "significant" break regardless of whether one
+  occurred.
+- ``cross_validation.cross_validation.PurgedKFold``: ``.split()`` crashed
+  (``TypeError: '<' not supported between instances of 'int' and 'slice'``)
+  whenever ``samples_info_sets`` had a non-unique index — e.g. pooling labeled
+  events across multiple assets that can share the same event date.
+- Relaxed the ``numpy``/``numba`` upper version bounds so the package actually
+  installs with official wheels on Python 3.13 (the old bounds forced ``pip``
+  onto an experimental, crash-prone MINGW numpy build on Windows).
+
+Backward-compatible additions
+------------------------------
+
+All new arguments default to ``None``/``False`` and reproduce upstream's exact
+existing behaviour, so this fork is a drop-in replacement.
+
+- ``labeling.labeling.add_vertical_barrier(..., num_bars=None)``: advance
+  ``num_bars`` bar *positions* ahead of each event instead of a calendar-time
+  offset. On daily-bar data, the default calendar-time search silently
+  shortens the intended holding period across weekends/holidays.
+- ``structural_breaks.cusum.get_chu_stinchcombe_white_statistics(..., window=None)``:
+  bound the reference-point search and the :math:`\sigma_t` estimate to the
+  trailing ``window`` observations, instead of expanding from the series'
+  start (which becomes almost trivially "significant" on long single-asset
+  histories).
+- ``structural_breaks.sadf.get_sadf(..., model="native")``: the plain
+  Phillips-Wu-Yu (2011) / AFML Ch.17 base SADF spec (constant + lagged level +
+  lagged diffs, no deterministic trend term) — none of the existing model
+  choices provide it, they all add a trend regressor. Vectorised via
+  cumulative sums (the other models' shared from-scratch-refit inner loop
+  would be ~25x slower on a 1500-observation daily series).
+- ``util.volatility.get_daily_vol(..., adjust=True, use_bars=False)``:
+  ``adjust=`` is passed through to the EWM ``.std()`` call; ``use_bars=True``
+  switches to plain ``close.pct_change()`` (Snippet 3.1's default calendar-day
+  search steps one bar further back than intended whenever "1 day ago" lands
+  exactly on an existing timestamp).
+
 Installation
 ============
 Installation can then be done via pip::
@@ -81,12 +140,18 @@ source code:
 
     git clone https://github.com/baobach/mlfinpy
 
+    # or, for this fork (bug fixes and additions, see "About this fork" above):
+    git clone https://github.com/Xohn/mlfinpy
+
 Alternatively, if you still want the convenience of a global ``from mlfinpy import x``,
 you should try:
 
 .. code-block:: text
 
     pip install -e git+https://github.com/baobach/mlfinpy.git
+
+    # or, for this fork:
+    pip install -e git+https://github.com/Xohn/mlfinpy.git
 
 Work with HFT Data
 ==================

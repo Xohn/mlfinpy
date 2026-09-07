@@ -328,6 +328,14 @@ The following functions are used for the triple-barrier method which works in ta
 
 .. autofunction:: add_vertical_barrier
 
+.. tip::
+    **Fork-only:** ``add_vertical_barrier`` also accepts ``num_bars``. When
+    given, it advances ``num_bars`` bar *positions* ahead of each event
+    instead of a calendar-time offset — useful on daily-bar data, where the
+    default calendar-time search (above) silently shortens the intended
+    holding period across weekends/holidays. Default ``None`` preserves the
+    behaviour documented above exactly.
+
 .. autofunction:: get_events
 
 .. autofunction:: get_bins
